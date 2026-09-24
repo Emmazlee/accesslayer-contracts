@@ -3008,3 +3008,23 @@ pub struct EscalationConfigUpdatedEvent {
 pub fn escalation_config_updated_topics(admin: &Address) -> (Symbol, Address) {
     (ESCALATION_CONFIG_UPDATED_EVENT_NAME, admin.clone())
 }
+
+/// Event name for configuring a graduated bonding curve with supply milestones.
+pub const GRADUATED_CURVE_CONFIGURED_EVENT_NAME: Symbol = symbol_short!("grad_crv");
+
+/// Stable graduated curve configured event payload for downstream indexers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct GraduatedCurveConfiguredEvent {
+    /// Creator whose curve was configured.
+    pub creator: Address,
+    /// All milestone `(supply_threshold, exponent)` pairs.
+    pub milestones: Vec<(u32, u32)>,
+    /// Ledger sequence at the time of configuration.
+    pub ledger: u32,
+}
+
+/// Shared graduated curve configured event topics tuple.
+pub fn graduated_curve_configured_topics(creator: &Address) -> (Symbol, Address) {
+    (GRADUATED_CURVE_CONFIGURED_EVENT_NAME, creator.clone())
+}

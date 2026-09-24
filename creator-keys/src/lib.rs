@@ -311,6 +311,23 @@ pub enum EscalationError {
     NotRegistered = 10,
 }
 
+/// Errors raised by graduated bonding curve configuration entrypoints.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum CurveConfigError {
+    /// Milestones vector is empty or exceeds the maximum of 5.
+    InvalidMilestoneCount = 1,
+    /// Supply thresholds must be strictly ascending.
+    ThresholdNotAscending = 2,
+    /// Exponent must be in the range 1..=5.
+    InvalidExponent = 3,
+    /// The creator address is not registered.
+    NotRegistered = 4,
+    /// Arithmetic overflow occurred during curve calculation.
+    Overflow = 5,
+}
+
 pub mod fee {
     use crate::ContractError;
 
@@ -573,6 +590,10 @@ pub mod constants {
 
         pub fn curve_preset(creator: &Address) -> DataKey {
             DataKey::CurvePreset(creator.clone())
+        }
+
+        pub fn graduated_curve(creator: &Address) -> DataKey {
+            DataKey::GraduatedCurve(creator.clone())
         }
 
         pub fn creator_fee_balance(creator: &Address) -> DataKey {
@@ -1591,6 +1612,8 @@ pub enum DataKey {
     BuybackPoolAddress,
     /// Protocol-wide poll quorum-escalation configuration.
     EscalationConfig,
+    /// Graduated bonding curve milestones for a creator.
+    GraduatedCurve(Address),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -3089,12 +3112,82 @@ fn read_curve_exponent(env: &Env, creator: &Address) -> Option<u32> {
         .get(&constants::storage::curve_exponent(creator))
 }
 
+fn read_graduated_curve(env: &Env, creator: &Address) -> Option<Vec<(u32, u32)>> {
+    env.storage()
+        .persistent()
+        .get(&constants::storage::graduated_curve(creator))
+}
+
+pub fn graduated_exponent_for_supply(milestones: &Vec<(u32, u32)>, supply: u32) -> u32 {
+    let mut last_exponent = 1u32;
+    for (threshold, exponent) in milestones.iter() {
+        last_exponent = exponent;
+        if supply <= threshold {
+            return exponent;
+        }
+    }
+    last_exponent
+}
+
+pub fn compute_graduated_curve_price(
+    milestones: &Vec<(u32, u32)>,
+    base_price: i128,
+    slope: i128,
+    supply: u32,
+) -> Result<i128, ContractError> {
+    if milestones.is_empty() {
+        return Ok(base_price);
+    }
+
+    let mut current_base = base_price;
+    let mut prev_threshold = 0u32;
+    let mut last_exponent = 1u32;
+
+    for (threshold, exponent) in milestones.iter() {
+        last_exponent = exponent;
+        if supply <= threshold {
+            let delta = (supply - prev_threshold) as i128;
+            let delta_exp = checked_pow_i128(delta, exponent)?;
+            let delta_component = slope
+                .checked_mul(delta_exp)
+                .ok_or(ContractError::Overflow)?;
+            return current_base
+                .checked_add(delta_component)
+                .ok_or(ContractError::Overflow);
+        } else {
+            let span = (threshold - prev_threshold) as i128;
+            let span_exp = checked_pow_i128(span, exponent)?;
+            let span_component = slope
+                .checked_mul(span_exp)
+                .ok_or(ContractError::Overflow)?;
+            current_base = current_base
+                .checked_add(span_component)
+                .ok_or(ContractError::Overflow)?;
+            prev_threshold = threshold;
+        }
+    }
+
+    let delta = (supply - prev_threshold) as i128;
+    let delta_exp = checked_pow_i128(delta, last_exponent)?;
+    let delta_component = slope
+        .checked_mul(delta_exp)
+        .ok_or(ContractError::Overflow)?;
+    current_base
+        .checked_add(delta_component)
+        .ok_or(ContractError::Overflow)
+}
+
 fn compute_bonding_curve_price(
     env: &Env,
     creator: &Address,
     base_price: i128,
     supply: u32,
 ) -> Result<i128, ContractError> {
+    if let Some(milestones) = read_graduated_curve(env, creator) {
+        let slope = read_curve_slope(env);
+        return compute_graduated_curve_price(&milestones, base_price, slope, supply);
+    }
+
     if let Some(exponent) = read_curve_exponent(env, creator) {
         let slope = read_curve_slope(env);
         let supply_exp = checked_pow_i128(supply as i128, exponent)?;
@@ -11800,6 +11893,61 @@ impl CreatorKeysContract {
     /// Read-only view: returns the curve exponent for a creator, if set.
     pub fn get_curve_exponent(env: Env, creator: Address) -> Option<u32> {
         read_curve_exponent(&env, &creator)
+    }
+
+    /// Sets a graduated bonding curve with supply milestones for a creator.
+    ///
+    /// Requires authorization from `creator`. Milestones must have 1..=5 tiers,
+    /// thresholds must be strictly ascending, and exponents must be in 1..=5.
+    pub fn set_graduated_curve(
+        env: Env,
+        creator: Address,
+        milestones: Vec<(u32, u32)>,
+    ) -> Result<(), CurveConfigError> {
+        creator.require_auth();
+        read_registered_creator_profile(&env, &creator)
+            .map_err(|_| CurveConfigError::NotRegistered)?;
+
+        if milestones.is_empty() || milestones.len() > 5 {
+            return Err(CurveConfigError::InvalidMilestoneCount);
+        }
+
+        let mut prev_threshold = 0u32;
+        for (threshold, exponent) in milestones.iter() {
+            if threshold <= prev_threshold {
+                return Err(CurveConfigError::ThresholdNotAscending);
+            }
+            if !(1..=5).contains(&exponent) {
+                return Err(CurveConfigError::InvalidExponent);
+            }
+            prev_threshold = threshold;
+        }
+
+        let key = constants::storage::graduated_curve(&creator);
+        env.storage().persistent().set(&key, &milestones);
+        extend_key_ttl_to_full_window(&env, &key);
+
+        env.events().publish(
+            events::graduated_curve_configured_topics(&creator),
+            events::GraduatedCurveConfiguredEvent {
+                creator: creator.clone(),
+                milestones,
+                ledger: env.ledger().sequence(),
+            },
+        );
+
+        Ok(())
+    }
+
+    /// Read-only view: returns the graduated bonding curve milestones for a creator, if set.
+    pub fn get_graduated_curve(env: Env, creator: Address) -> Option<Vec<(u32, u32)>> {
+        read_graduated_curve(&env, &creator)
+    }
+
+    /// Read-only view: returns the active graduated exponent for a creator at a given supply.
+    pub fn get_graduated_exponent(env: Env, creator: Address, supply: u32) -> Option<u32> {
+        let milestones = read_graduated_curve(&env, &creator)?;
+        Some(graduated_exponent_for_supply(&milestones, supply))
     }
 
     pub fn get_stake_unlock_ledger(env: Env, creator: Address, holder: Address) -> Option<u32> {
