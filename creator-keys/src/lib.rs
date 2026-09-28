@@ -593,6 +593,7 @@ pub mod constants {
         pub const RETENTION_POLICY: DataKey = DataKey::RetentionPolicy;
         pub const GLOBAL_DEADLINE_LEDGER: DataKey = DataKey::GlobalDeadlineLedger;
         pub const PROTOCOL_FEE_BPS: DataKey = DataKey::ProtocolFeeBps;
+        pub const NEXT_TRADE_ID: DataKey = DataKey::NextTradeId;
         pub const LOCKUP_DURATION_SECS: DataKey = DataKey::LockupDurationSecs;
         pub const FLASH_LOAN_GUARD_LEDGERS: DataKey = DataKey::FlashLoanGuardLedgers;
 
@@ -1655,6 +1656,8 @@ pub enum DataKey {
     HolderCapBps(Address),
     /// Protocol fee basis points.
     ProtocolFeeBps,
+    /// Monotonic counter for protocol trade fee collection events.
+    NextTradeId,
     /// Protocol-wide emergency trading halt flag (#784). When `true`, every
     /// buy and sell is rejected regardless of per-key pause state.
     GlobalTradingPaused,
@@ -3059,6 +3062,22 @@ fn read_protocol_fee_recipient_balance(env: &Env) -> i128 {
         .unwrap_or(0)
 }
 
+fn next_trade_id(env: &Env) -> Result<u64, ContractError> {
+    let current = env
+        .storage()
+        .persistent()
+        .get(&constants::storage::NEXT_TRADE_ID)
+        .unwrap_or(0u64);
+    let next = current
+        .checked_add(1)
+        .ok_or(ContractError::Overflow)?;
+    env.storage()
+        .persistent()
+        .set(&constants::storage::NEXT_TRADE_ID, &next);
+    extend_key_ttl_to_full_window(&env, &constants::storage::NEXT_TRADE_ID);
+    Ok(next)
+}
+
 fn credit_protocol_fee_recipient_balance(env: &Env, amount: i128) -> Result<(), ContractError> {
     if amount <= 0 {
         return Ok(());
@@ -3145,13 +3164,16 @@ fn collect_protocol_trade_fee(
         return Ok(amount);
     }
     let (_, treasury) = read_trade_fee_config(env).ok_or(ContractError::FeeConfigNotSet)?;
+    let trade_id = next_trade_id(env)?;
     credit_treasury_balance(env, trade_fee)?;
     credit_staking_rewards_pool(env, creator, trade_fee)?;
     env.events().publish(
-        events::fee_collected_topics(&treasury),
+        events::fee_collected_topics_with_trade_id(&treasury, trade_id),
         events::FeeCollectedEvent {
             treasury: treasury.clone(),
-            amount: trade_fee,
+            trade_id,
+            amount,
+            fee: trade_fee,
             ledger: env.ledger().sequence(),
         },
     );
@@ -8893,11 +8915,14 @@ impl CreatorKeysContract {
                     if let Some((_, treasury)) = read_trade_fee_config(&env) {
                         credit_treasury_balance(&env, trade_fee)?;
                         credit_staking_rewards_pool(&env, &creator, trade_fee)?;
+                        let trade_id = next_trade_id(&env)?;
                         env.events().publish(
-                            events::fee_collected_topics(&treasury),
+                            events::fee_collected_topics_with_trade_id(&treasury, trade_id),
                             events::FeeCollectedEvent {
                                 treasury: treasury.clone(),
-                                amount: trade_fee,
+                                trade_id,
+                                amount: price,
+                                fee: trade_fee,
                                 ledger: env.ledger().sequence(),
                             },
                         );
