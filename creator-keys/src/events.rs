@@ -52,7 +52,7 @@ pub const FEE_COLLECTED_EVENT_NAME: Symbol = symbol_short!("fee_coll");
 /// Stable fee collection event payload for downstream indexers.
 ///
 /// Event shape:
-/// - topics: `(FEE_COLLECTED_EVENT_NAME, treasury[, trade_id])`
+/// - topics: `(FEE_COLLECTED_EVENT_NAME, treasury, trade_id)`
 /// - data: `FeeCollectedEvent`
 ///
 /// Emitted on every buy and sell once the protocol trade fee is configured,
@@ -71,11 +71,6 @@ pub struct FeeCollectedEvent {
     pub fee: i128,
     /// Ledger sequence number at the time of the trade.
     pub ledger: u32,
-}
-
-/// Shared fee collected event topics tuple.
-pub fn fee_collected_topics(treasury: &Address) -> (Symbol, Address) {
-    (FEE_COLLECTED_EVENT_NAME, treasury.clone())
 }
 
 /// Shared fee collected event topics tuple including the trade identifier.
