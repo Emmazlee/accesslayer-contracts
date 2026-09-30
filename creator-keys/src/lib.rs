@@ -3157,9 +3157,7 @@ pub fn compute_graduated_curve_price(
         } else {
             let span = (threshold - prev_threshold) as i128;
             let span_exp = checked_pow_i128(span, exponent)?;
-            let span_component = slope
-                .checked_mul(span_exp)
-                .ok_or(ContractError::Overflow)?;
+            let span_component = slope.checked_mul(span_exp).ok_or(ContractError::Overflow)?;
             current_base = current_base
                 .checked_add(span_component)
                 .ok_or(ContractError::Overflow)?;

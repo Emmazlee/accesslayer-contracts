@@ -8,16 +8,11 @@
 
 mod contract_test_env;
 
-use contract_test_env::{
-    register_creator_keys, register_test_creator, test_env_with_auths,
-};
+use contract_test_env::{register_creator_keys, register_test_creator, test_env_with_auths};
 use creator_keys::{
     compute_graduated_curve_price, graduated_exponent_for_supply, CurveConfigError,
 };
-use soroban_sdk::{
-    testutils::Address as _,
-    Address, Env, Vec as SorobanVec,
-};
+use soroban_sdk::{testutils::Address as _, Address, Env, Vec as SorobanVec};
 
 /// Deterministic pseudo-random number generator for reproducible property tests.
 struct SimpleRng {
@@ -108,12 +103,14 @@ fn test_graduated_curve_property_suite_10000_iterations() {
         // --- Property 2: Boundary Smoothness across Milestone Transitions ---
         for &(threshold, _) in milestones_raw.iter() {
             if threshold >= 1 {
-                let p_before = compute_graduated_curve_price(&milestones, base_price, slope, threshold - 1)
-                    .unwrap_or(0);
+                let p_before =
+                    compute_graduated_curve_price(&milestones, base_price, slope, threshold - 1)
+                        .unwrap_or(0);
                 let p_at = compute_graduated_curve_price(&milestones, base_price, slope, threshold)
                     .unwrap_or(0);
-                let p_after = compute_graduated_curve_price(&milestones, base_price, slope, threshold + 1)
-                    .unwrap_or(0);
+                let p_after =
+                    compute_graduated_curve_price(&milestones, base_price, slope, threshold + 1)
+                        .unwrap_or(0);
 
                 assert!(
                     p_at >= p_before,
