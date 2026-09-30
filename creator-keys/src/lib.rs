@@ -192,6 +192,9 @@ pub enum ContractError {
     // --- Whitelist gate (Issue #998) ---
     /// The whitelist for this key is permanently disabled and cannot be re-enabled.
     WhitelistPermanentlyDisabled = 101,
+    // --- Price impact circuit breaker (Issue #996) ---
+    /// Price impact circuit breaker tripped.
+    CircuitBreakerTripped = 102,
 }
 
 /// Errors raised by the staking entrypoints
@@ -5602,11 +5605,17 @@ impl CreatorKeysContract {
                             .checked_mul(threshold_pct_u128)
                             .ok_or(ContractError::Overflow)?
                     {
+                        let actual_bps = price_change
+                            .checked_mul(10_000)
+                            .ok_or(ContractError::Overflow)?
+                            .checked_div(pre_price_u128)
+                            .ok_or(ContractError::Overflow)? as u32;
                         env.events().publish(
                             (events::circuit_breaker_triggered_topics(),),
                             events::CircuitBreakerTriggeredEvent {
                                 pre_price,
                                 post_price,
+                                actual_bps,
                             },
                         );
                         return Err(ContractError::CircuitBreakerTriggered);
@@ -5990,11 +5999,17 @@ impl CreatorKeysContract {
                         .checked_mul(threshold_pct_u128)
                         .ok_or(ContractError::Overflow)?
                 {
+                    let actual_bps = price_change
+                        .checked_mul(10_000)
+                        .ok_or(ContractError::Overflow)?
+                        .checked_div(pre_price_u128)
+                        .ok_or(ContractError::Overflow)? as u32;
                     env.events().publish(
                         (events::circuit_breaker_triggered_topics(),),
                         events::CircuitBreakerTriggeredEvent {
                             pre_price,
                             post_price,
+                            actual_bps,
                         },
                     );
                     return Err(ContractError::CircuitBreakerTriggered);
