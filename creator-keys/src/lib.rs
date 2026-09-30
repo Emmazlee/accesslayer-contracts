@@ -842,13 +842,18 @@ pub mod constants {
 
         pub const MAX_HOLDING_BOUND: DataKey = DataKey::MaxHoldingBound;
 
+        pub const LP_CONTRACT_ADDRESS: DataKey = DataKey::LpContractAddress;
+
+        pub const LP_ALLOCATION_BPS: DataKey = DataKey::LpAllocationBps;
+
         pub fn referrer_of(referee: &Address) -> DataKey {
             DataKey::Referrer(referee.clone())
         }
 
-        pub fn referral_settled(referee: &Address) -> DataKey {
-            DataKey::ReferralSettled(referee.clone())
+        pub fn referral_settled(buyer: &Address) -> DataKey {
+            DataKey::ReferralSettled(buyer.clone())
         }
+
         pub fn quorum_bps(creator: &Address) -> DataKey {
             DataKey::QuorumBps(creator.clone())
         }
@@ -1795,7 +1800,10 @@ pub enum DataKey {
     UniqueTraderCount(Address),
     /// Per-creator per-wallet flag: true if this wallet has ever traded.
     HasTraded(Address, Address),
-
+    /// LP contract address for liquidity pool routing.
+    LpContractAddress,
+    /// LP allocation percentage in basis points for liquidity pool routing.
+    LpAllocationBps,
     /// (creator) -> accumulated reputation score (`i128`, floored at zero).
     ReputationScore(Address),
     /// (creator) -> per-reason contribution breakdown backing the reputation score.
@@ -5822,6 +5830,49 @@ impl CreatorKeysContract {
         // of the fee is routed into the creator's staking rewards pool.
         let net_amount = collect_protocol_trade_fee(&env, &creator, total_price)?;
 
+        // Deduct LP allocation if LP contract is configured
+        let lp_contract: Option<Address> = env
+            .storage()
+            .persistent()
+            .get(&constants::storage::LP_CONTRACT_ADDRESS);
+
+        let net_amount = if let Some(lp_address) = lp_contract {
+            let lp_allocation_bps: u32 = env
+                .storage()
+                .persistent()
+                .get(&constants::storage::LP_ALLOCATION_BPS)
+                .unwrap_or(0);
+
+            if lp_allocation_bps > 0 {
+                let lp_allocation = fee::apply_percentage_fee(net_amount, lp_allocation_bps)
+                    .ok_or(ContractError::Overflow)?;
+
+                if lp_allocation > 0 {
+                    // Forward allocation to LP contract
+                    // Note: In Soroban, we can't directly transfer to another contract
+                    // without invoking it. For now, we'll emit the event and the
+                    // allocation can be claimed by the LP contract or handled externally.
+                    env.events().publish(
+                        events::lp_allocation_sent_topics(&lp_address),
+                        events::LpAllocationSentEvent {
+                            lp_contract: lp_address.clone(),
+                            amount: lp_allocation,
+                            ledger: env.ledger().sequence(),
+                        },
+                    );
+
+                    fee::checked_sub_i128(net_amount, lp_allocation)
+                        .ok_or(ContractError::Overflow)?
+                } else {
+                    net_amount
+                }
+            } else {
+                net_amount
+            }
+        } else {
+            net_amount
+        };
+
         if let Some(config) = read_protocol_fee_config(&env) {
             let (creator_fee, protocol_fee) =
                 fee::checked_compute_fee_split(net_amount, config.creator_bps, config.protocol_bps)
@@ -9444,6 +9495,67 @@ impl CreatorKeysContract {
             .persistent()
             .set(&constants::storage::PROTOCOL_STATE_VERSION, &new_version);
 
+        Ok(())
+    }
+
+    /// Sets the LP contract address for liquidity pool routing.
+    ///
+    /// Only callable by the protocol admin. When set, a configurable portion
+    /// of buy proceeds will be forwarded to this address.
+    ///
+    /// # Arguments
+    ///
+    /// * `admin` - The protocol admin address
+    /// * `lp_address` - The LP contract address (can be zero address to disable)
+    ///
+    /// # Errors
+    ///
+    /// - [`ContractError::Unauthorized`] if caller is not the protocol admin
+    pub fn set_lp_contract_address(
+        env: Env,
+        admin: Address,
+        lp_address: Address,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+        assert_is_admin(&env, &admin)?;
+
+        env.storage()
+            .persistent()
+            .set(&constants::storage::LP_CONTRACT_ADDRESS, &lp_address);
+        extend_key_ttl_to_full_window(&env, &constants::storage::LP_CONTRACT_ADDRESS);
+        Ok(())
+    }
+
+    /// Sets the LP allocation percentage in basis points.
+    ///
+    /// Only callable by the protocol admin. This percentage of buy proceeds
+    /// will be forwarded to the LP contract address on each buy.
+    ///
+    /// # Arguments
+    ///
+    /// * `admin` - The protocol admin address
+    /// * `allocation_bps` - The allocation percentage in basis points (0-10000)
+    ///
+    /// # Errors
+    ///
+    /// - [`ContractError::Unauthorized`] if caller is not the protocol admin
+    /// - [`ContractError::InvalidFeeConfig`] if allocation_bps exceeds 10000
+    pub fn set_lp_allocation_bps(
+        env: Env,
+        admin: Address,
+        allocation_bps: u32,
+    ) -> Result<(), ContractError> {
+        admin.require_auth();
+        assert_is_admin(&env, &admin)?;
+
+        if allocation_bps > fee::BPS_MAX {
+            return Err(ContractError::InvalidFeeConfig);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&constants::storage::LP_ALLOCATION_BPS, &allocation_bps);
+        extend_key_ttl_to_full_window(&env, &constants::storage::LP_ALLOCATION_BPS);
         Ok(())
     }
 

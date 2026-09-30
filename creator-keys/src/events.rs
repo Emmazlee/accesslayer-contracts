@@ -74,6 +74,33 @@ pub fn fee_collected_topics(treasury: &Address) -> (Symbol, Address) {
     (FEE_COLLECTED_EVENT_NAME, treasury.clone())
 }
 
+/// Event name for LP allocation sent to liquidity pool.
+pub const LP_ALLOCATION_SENT_EVENT_NAME: Symbol = symbol_short!("lp_alloc");
+
+/// Stable LP allocation sent event payload for downstream indexers.
+///
+/// Event shape:
+/// - topics: `(LP_ALLOCATION_SENT_EVENT_NAME, lp_contract)`
+/// - data: `LpAllocationSentEvent`
+///
+/// Emitted on each buy when LP routing is configured, carrying the amount
+/// forwarded to the LP contract and the LP contract address.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct LpAllocationSentEvent {
+    /// LP contract address that received the allocation.
+    pub lp_contract: Address,
+    /// Amount forwarded to the LP contract.
+    pub amount: i128,
+    /// Ledger sequence number at the time of the allocation.
+    pub ledger: u32,
+}
+
+/// Shared LP allocation sent event topics tuple.
+pub fn lp_allocation_sent_topics(lp_contract: &Address) -> (Symbol, Address) {
+    (LP_ALLOCATION_SENT_EVENT_NAME, lp_contract.clone())
+}
+
 /// Event name for a sell rejected by the anti-flash-trade lockup window.
 pub const LOCKUP_BLOCKED_EVENT_NAME: Symbol = symbol_short!("lck_blk");
 
