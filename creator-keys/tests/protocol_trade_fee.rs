@@ -136,9 +136,15 @@ fn test_sell_routes_one_percent_to_treasury_and_remainder_to_seller() {
     );
 
     assert_eq!(sell_events.len(), 1, "exactly one sell event expected");
-    let fee = fees.iter().find(|entry| entry.treasury == s.treasury).unwrap();
+    let fee = fees
+        .iter()
+        .find(|entry| entry.treasury == s.treasury)
+        .unwrap();
     assert_eq!(fee.trade_id, 2, "trade ids increment across trades");
-    assert_eq!(fee.amount, 100, "the event should record the gross trade amount");
+    assert_eq!(
+        fee.amount, 100,
+        "the event should record the gross trade amount"
+    );
     assert_eq!(fee.fee, 1, "the event should record the deducted fee");
     let (_, _, data) = &sell_events[0];
     let payload: events::KeysSoldEvent = data.into_val(&env);
@@ -154,7 +160,8 @@ fn test_sell_routes_one_percent_to_treasury_and_remainder_to_seller() {
         "a fee_collected event must be emitted on the sell"
     );
     assert!(
-        fees.iter().any(|fee| fee.0 == s.treasury && fee.1 == 1),
+        fees.iter()
+            .any(|fee| fee.treasury == s.treasury && fee.fee == 1),
         "the sell's fee_collected event must carry the treasury and 1 stroop"
     );
 }

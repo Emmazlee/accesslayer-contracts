@@ -3068,9 +3068,7 @@ fn next_trade_id(env: &Env) -> Result<u64, ContractError> {
         .persistent()
         .get(&constants::storage::NEXT_TRADE_ID)
         .unwrap_or(0u64);
-    let next = current
-        .checked_add(1)
-        .ok_or(ContractError::Overflow)?;
+    let next = current.checked_add(1).ok_or(ContractError::Overflow)?;
     env.storage()
         .persistent()
         .set(&constants::storage::NEXT_TRADE_ID, &next);
