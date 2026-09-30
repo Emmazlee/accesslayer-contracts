@@ -5609,7 +5609,8 @@ impl CreatorKeysContract {
                             .checked_mul(10_000)
                             .ok_or(ContractError::Overflow)?
                             .checked_div(pre_price_u128)
-                            .ok_or(ContractError::Overflow)? as u32;
+                            .ok_or(ContractError::Overflow)?
+                            as u32;
                         env.events().publish(
                             (events::circuit_breaker_triggered_topics(),),
                             events::CircuitBreakerTriggeredEvent {
@@ -6003,7 +6004,8 @@ impl CreatorKeysContract {
                         .checked_mul(10_000)
                         .ok_or(ContractError::Overflow)?
                         .checked_div(pre_price_u128)
-                        .ok_or(ContractError::Overflow)? as u32;
+                        .ok_or(ContractError::Overflow)?
+                        as u32;
                     env.events().publish(
                         (events::circuit_breaker_triggered_topics(),),
                         events::CircuitBreakerTriggeredEvent {
