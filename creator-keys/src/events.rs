@@ -1109,6 +1109,7 @@ pub struct SelfFreezeEvent {
 pub struct CircuitBreakerTriggeredEvent {
     pub pre_price: i128,
     pub post_price: i128,
+    pub actual_bps: u32,
 }
 
 pub fn circuit_breaker_triggered_topics() -> Symbol {
