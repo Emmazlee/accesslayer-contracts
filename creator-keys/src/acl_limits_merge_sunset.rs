@@ -688,6 +688,19 @@ mod test {
         })
     }
 
+    /// The proposal under test: which keys are being merged, the quorum the
+    /// contract will enforce, and the holders whose votes the test casts.
+    ///
+    /// Grouping these keeps `propose` within clippy's argument budget while
+    /// still mirroring the entrypoint's own seven parameters.
+    struct MergeProposalSpec<'a> {
+        source_key: &'a Address,
+        target_key: &'a Address,
+        ratio: u32,
+        threshold: u32,
+        holders: Vec<Address>,
+    }
+
     // Each entrypoint is invoked in its own contract frame: in production the
     // proposal, the votes and the execution are separate transactions, and the
     // mock auth recorder rejects a repeated `require_auth` inside one frame.
@@ -695,15 +708,17 @@ mod test {
         env: &Env,
         contract_id: &Address,
         creator: &Address,
-        source_key: &Address,
-        target_key: &Address,
-        ratio: u32,
-        threshold: u32,
-        holders: Vec<Address>,
+        spec: MergeProposalSpec<'_>,
     ) -> Result<(), ContractError> {
         env.as_contract(contract_id, || {
             propose_key_merge(
-                env, creator, source_key, target_key, ratio, threshold, holders,
+                env,
+                creator,
+                spec.source_key,
+                spec.target_key,
+                spec.ratio,
+                spec.threshold,
+                spec.holders,
             )
         })
     }
@@ -762,11 +777,13 @@ mod test {
             &env,
             &contract_id,
             &creator,
-            &source_key,
-            &target_key,
-            10_000,
-            5_000,
-            holders,
+            MergeProposalSpec {
+                source_key: &source_key,
+                target_key: &target_key,
+                ratio: 10_000,
+                threshold: 5_000,
+                holders,
+            },
         )
         .is_ok());
 
@@ -806,11 +823,13 @@ mod test {
             &env,
             &contract_id,
             &creator,
-            &source_key,
-            &target_key,
-            10_000,
-            5_000,
-            holders,
+            MergeProposalSpec {
+                source_key: &source_key,
+                target_key: &target_key,
+                ratio: 10_000,
+                threshold: 5_000,
+                holders,
+            },
         )
         .is_ok());
 
@@ -849,11 +868,13 @@ mod test {
             &env,
             &contract_id,
             &creator,
-            &source_key,
-            &target_key,
-            10_000,
-            7_000,
-            holders,
+            MergeProposalSpec {
+                source_key: &source_key,
+                target_key: &target_key,
+                ratio: 10_000,
+                threshold: 7_000,
+                holders,
+            },
         )
         .is_ok());
 
@@ -920,11 +941,13 @@ mod test {
                 &env,
                 &contract_id,
                 &creator,
-                &source_key,
-                &target_key,
-                5_000,
-                5_000,
-                holders,
+                MergeProposalSpec {
+                    source_key: &source_key,
+                    target_key: &target_key,
+                    ratio: 5_000,
+                    threshold: 5_000,
+                    holders,
+                },
             )
             .is_ok());
 
