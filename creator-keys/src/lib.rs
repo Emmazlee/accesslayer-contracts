@@ -12347,7 +12347,7 @@ impl CreatorKeysContract {
         read_registered_creator_profile(&env, &creator)?;
         if caller != creator {
             return Err(ContractError::Unauthorized);
-        assert_creator_or_admin(&env, &caller, &creator)?;
+        }
         if enabled && is_whitelist_permanently_disabled(&env, &creator) {
             return Err(ContractError::WhitelistPermanentlyDisabled);
         }
