@@ -8,7 +8,6 @@ use crate::{
 };
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
-    testutils::{Address as _, Events},
     Address, Env, IntoVal, String, Symbol,
 };
 
