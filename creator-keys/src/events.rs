@@ -53,25 +53,33 @@ pub const FEE_COLLECTED_EVENT_NAME: Symbol = symbol_short!("fee_coll");
 /// Stable fee collection event payload for downstream indexers.
 ///
 /// Event shape:
-/// - topics: `(FEE_COLLECTED_EVENT_NAME, treasury)`
+/// - topics: `(FEE_COLLECTED_EVENT_NAME, treasury, trade_id)`
 /// - data: `FeeCollectedEvent`
 ///
 /// Emitted on every buy and sell once the protocol trade fee is configured,
-/// carrying the deducted amount and the treasury address that received it.
+/// carrying the trade identifier, the gross amount, the deducted fee, and the
+/// treasury address that received it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct FeeCollectedEvent {
     /// Treasury address that received the fee.
     pub treasury: Address,
-    /// Fee amount deducted from the trade.
+    /// Monotonic trade counter for the fee collection event.
+    pub trade_id: u64,
+    /// Gross trade amount before the protocol deduction.
     pub amount: i128,
+    /// Fee amount deducted from the trade.
+    pub fee: i128,
     /// Ledger sequence number at the time of the trade.
     pub ledger: u32,
 }
 
-/// Shared fee collected event topics tuple.
-pub fn fee_collected_topics(treasury: &Address) -> (Symbol, Address) {
-    (FEE_COLLECTED_EVENT_NAME, treasury.clone())
+/// Shared fee collected event topics tuple including the trade identifier.
+pub fn fee_collected_topics_with_trade_id(
+    treasury: &Address,
+    trade_id: u64,
+) -> (Symbol, Address, u64) {
+    (FEE_COLLECTED_EVENT_NAME, treasury.clone(), trade_id)
 }
 
 /// Event name for LP allocation sent to liquidity pool.
