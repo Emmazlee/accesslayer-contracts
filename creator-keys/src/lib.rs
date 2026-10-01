@@ -3072,7 +3072,7 @@ fn next_trade_id(env: &Env) -> Result<u64, ContractError> {
     env.storage()
         .persistent()
         .set(&constants::storage::NEXT_TRADE_ID, &next);
-    extend_key_ttl_to_full_window(&env, &constants::storage::NEXT_TRADE_ID);
+    extend_key_ttl_to_full_window(env, &constants::storage::NEXT_TRADE_ID);
     Ok(next)
 }
 
